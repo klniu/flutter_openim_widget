@@ -77,14 +77,15 @@ class ChatPicturePreview extends StatelessWidget {
   Widget _buildChildView(int index) {
     var info = picList.elementAt(index);
     if (info.file != null) {
-      return ExtendedImage.file(
-        info.file!,
-        fit: BoxFit.contain,
-        mode: ExtendedImageMode.gesture,
-        clearMemoryCacheWhenDispose: true,
-        loadStateChanged: _buildLoadStateChangedView,
-        initGestureConfigHandler: _buildGestureConfig,
-      );
+      // return ExtendedImage.file(
+      //   info.file!,
+      //   fit: BoxFit.contain,
+      //   mode: ExtendedImageMode.gesture,
+      //   clearMemoryCacheWhenDispose: true,
+      //   loadStateChanged: _buildLoadStateChangedView,
+      //   initGestureConfigHandler: _buildGestureConfig,
+      // );
+      return Container();
     } else if (info.url != null) {
       return ExtendedImage.network(
         info.url!,

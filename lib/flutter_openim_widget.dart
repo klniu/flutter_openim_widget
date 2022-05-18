@@ -21,7 +21,6 @@ export 'src/chat_longpress_ripple.dart';
 export 'src/chat_menu.dart';
 export 'src/chat_merge_view.dart';
 export 'src/chat_multi_toolbox.dart';
-export 'src/chat_picture_preview.dart';
 export 'src/chat_picture_view.dart';
 export 'src/chat_quote_view.dart';
 export 'src/chat_radio_view.dart';
