@@ -78,6 +78,7 @@ class _CustomPopupMenuState extends State<CopyCustomPopupMenu> {
   OverlayEntry? _overlayEntry;
   CustomPopupMenuController? _controller;
   bool _canResponse = true;
+  TapDownDetails? _tapDownDetails;
 
   _showMenu() {
     Widget arrow = ClipPath(
@@ -90,8 +91,8 @@ class _CustomPopupMenuState extends State<CopyCustomPopupMenu> {
     );
 
     final viewInsets = EdgeInsets.fromWindowPadding(
-      WidgetsBinding.instance!.window.viewInsets,
-      WidgetsBinding.instance!.window.devicePixelRatio,
+      WidgetsBinding.instance.window.viewInsets,
+      WidgetsBinding.instance.window.devicePixelRatio,
     );
 
     var keyboardHeight = viewInsets.bottom;
@@ -113,6 +114,7 @@ class _CustomPopupMenuState extends State<CopyCustomPopupMenu> {
                 keyboardHeight: keyboardHeight,
                 verticalMargin: widget.verticalMargin,
                 position: widget.position,
+                onTapDownOffset: _tapDownDetails?.globalPosition,
               ),
               children: <Widget>[
                 if (widget.showArrow)
@@ -200,7 +202,7 @@ class _CustomPopupMenuState extends State<CopyCustomPopupMenu> {
     _controller = widget.controller;
     if (_controller == null) _controller = CustomPopupMenuController();
     _controller?.addListener(_updateView);
-    WidgetsBinding.instance?.addPostFrameCallback((call) {
+    WidgetsBinding.instance.addPostFrameCallback((call) {
       if (mounted) {
         _childBox = context.findRenderObject() as RenderBox?;
         _parentBox =
@@ -235,17 +237,24 @@ class _CustomPopupMenuState extends State<CopyCustomPopupMenu> {
             _controller?.showMenu();
           }
         },
+        onTapDown: (details) {
+          _tapDownDetails = details;
+        },
       ),
       color: Colors.transparent,
     );
     if (Platform.isIOS) {
       return child;
     } else {
+      // android 左滑关闭页面事件
+      bool menuIsShowing = _controller?.menuIsShowing ?? false;
       return WillPopScope(
-        onWillPop: () {
-          _hideMenu();
-          return Future.value(true);
-        },
+        onWillPop: menuIsShowing
+            ? () {
+                _hideMenu();
+                return Future.value(false);
+              }
+            : null,
         child: child,
       );
     }
@@ -274,6 +283,7 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
     required this.verticalMargin,
     required this.keyboardHeight,
     this.position,
+    this.onTapDownOffset,
   });
 
   final Size anchorSize;
@@ -281,6 +291,7 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
   final double verticalMargin;
   final PreferredPosition? position;
   final double keyboardHeight;
+  final Offset? onTapDownOffset;
 
   @override
   void performLayout(Size size) {
@@ -292,6 +303,7 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
     double anchorCenterX = anchorOffset.dx + anchorSize.width / 2;
     double anchorTopY = anchorOffset.dy;
     double anchorBottomY = anchorTopY + anchorSize.height;
+    double? touchY = onTapDownOffset?.dy;
     _MenuPosition menuPosition = _MenuPosition.bottomCenter;
 
     if (hasChild(_MenuLayoutId.content)) {
@@ -314,12 +326,28 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
     }
 
     bool isTop = false;
+
     if (position == null) {
       // auto calculate position
+      // 修正弹起键盘菜单显示问题
       isTop = anchorBottomY > (size.height - keyboardHeight) / 2;
     } else {
       isTop = position == PreferredPosition.top;
     }
+
+    // 修正超过一屏菜单显示问题
+    double minTopMargin = contentSize.height + arrowSize.height;
+    if (null != touchY && anchorTopY < minTopMargin) {
+      if (touchY < minTopMargin) {
+        isTop = false;
+        if (anchorSize.height > size.height * 0.8) {
+          anchorBottomY = touchY;
+        }
+      } else {
+        anchorTopY = touchY;
+      }
+    }
+
     if (anchorCenterX - contentSize.width / 2 < 0) {
       menuPosition = isTop ? _MenuPosition.topLeft : _MenuPosition.bottomLeft;
     } else if (anchorCenterX + contentSize.width / 2 > size.width) {
@@ -341,16 +369,20 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
         );
         break;
       case _MenuPosition.bottomLeft:
-        arrowOffset = Offset(anchorCenterX - arrowSize.width / 2,
-            anchorBottomY + verticalMargin);
+        arrowOffset = Offset(
+          anchorCenterX - arrowSize.width / 2,
+          anchorBottomY + verticalMargin,
+        );
         contentOffset = Offset(
           0,
           anchorBottomY + verticalMargin + arrowSize.height,
         );
         break;
       case _MenuPosition.bottomRight:
-        arrowOffset = Offset(anchorCenterX - arrowSize.width / 2,
-            anchorBottomY + verticalMargin);
+        arrowOffset = Offset(
+          anchorCenterX - arrowSize.width / 2,
+          anchorBottomY + verticalMargin,
+        );
         contentOffset = Offset(
           size.width - contentSize.width,
           anchorBottomY + verticalMargin + arrowSize.height,
@@ -387,6 +419,8 @@ class _MenuLayoutDelegate extends MultiChildLayoutDelegate {
         );
         break;
     }
+    print('=======arrow:$arrowOffset');
+    print('=======contentOffset:$contentOffset');
     if (hasChild(_MenuLayoutId.content)) {
       positionChild(_MenuLayoutId.content, contentOffset);
     }

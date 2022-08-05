@@ -4,10 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_openim_widget/flutter_openim_widget.dart';
-import 'package:flutter_openim_widget/src/chat_custom_emoji_view.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:focus_detector/focus_detector.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:sprintf/sprintf.dart';
 
 class MsgStreamEv<T> {
   final String msgId;
@@ -179,28 +178,28 @@ class ChatItemView extends StatefulWidget {
   final Function()? onTapAddEmojiMenu;
 
   /// Click the copy button event on the menu
-  final bool? enabledCopyMenu;
+  final bool enabledCopyMenu;
 
   /// Click the delete button event on the menu
-  final bool? enabledDelMenu;
+  final bool enabledDelMenu;
 
   /// Click the forward button event on the menu
-  final bool? enabledForwardMenu;
+  final bool enabledForwardMenu;
 
   /// Click the reply button event on the menu
-  final bool? enabledReplyMenu;
+  final bool enabledReplyMenu;
 
   /// Click the revoke button event on the menu
-  final bool? enabledRevokeMenu;
+  final bool enabledRevokeMenu;
 
   ///
-  final bool? enabledMultiMenu;
+  final bool enabledMultiMenu;
 
   ///
-  final bool? enabledTranslationMenu;
+  final bool enabledTranslationMenu;
 
   ///
-  final bool? enabledAddEmojiMenu;
+  final bool enabledAddEmojiMenu;
 
   /// 当前是否是多选模式
   final bool multiSelMode;
@@ -231,9 +230,6 @@ class ChatItemView extends StatefulWidget {
   /// 阅读时长s
   final int readingDuration;
 
-  /// 该条群消息需要阅读的人数
-  final int needReadCount;
-
   /// 预览群消息已读状态
   final Function()? onViewMessageReadStatus;
 
@@ -257,6 +253,21 @@ class ChatItemView extends StatefulWidget {
   final String? leftAvatarUrl;
   final String? rightName;
   final String? rightAvatarUrl;
+
+  /// 将公告消息做普通消息显示
+  final bool showNoticeMessage;
+
+  /// 显示长按菜单
+  final bool showLongPressMenu;
+
+  /// 时间装饰
+  final BoxDecoration? timeDecoration;
+
+  /// 上下间距
+  final EdgeInsetsGeometry? timePadding;
+
+  /// 点击系统软键盘返回键关闭菜单
+  final Subject<bool>? popPageCloseMenuSubject;
 
   const ChatItemView({
     Key? key,
@@ -296,14 +307,14 @@ class ChatItemView extends StatefulWidget {
     this.onTapMultiMenu,
     this.onTapTranslationMenu,
     this.onTapAddEmojiMenu,
-    this.enabledCopyMenu,
-    this.enabledMultiMenu,
-    this.enabledDelMenu,
-    this.enabledForwardMenu,
-    this.enabledReplyMenu,
-    this.enabledRevokeMenu,
-    this.enabledTranslationMenu,
-    this.enabledAddEmojiMenu,
+    this.enabledCopyMenu = true,
+    this.enabledMultiMenu = true,
+    this.enabledDelMenu = true,
+    this.enabledForwardMenu = true,
+    this.enabledReplyMenu = true,
+    this.enabledRevokeMenu = true,
+    this.enabledTranslationMenu = true,
+    this.enabledAddEmojiMenu = true,
     this.multiSelMode = false,
     this.onMultiSelChanged,
     this.multiList = const [],
@@ -314,7 +325,6 @@ class ChatItemView extends StatefulWidget {
     this.readingDuration = 30,
     this.isPrivateChat = false,
     this.onDestroyMessage,
-    this.needReadCount = 0,
     this.onViewMessageReadStatus,
     this.onFailedResend,
     this.customMessageBuilder,
@@ -327,6 +337,11 @@ class ChatItemView extends StatefulWidget {
     this.rightName,
     this.leftAvatarUrl,
     this.rightAvatarUrl,
+    this.showNoticeMessage = false,
+    this.showLongPressMenu = true,
+    this.timeDecoration,
+    this.timePadding,
+    this.popPageCloseMenuSubject,
   }) : super(key: key);
 
   @override
@@ -340,6 +355,7 @@ class _ChatItemViewState extends State<ChatItemView> {
 
   bool get _checked => widget.multiList.contains(widget.message);
   late StreamSubscription<bool> _keyboardSubs;
+  StreamSubscription<bool>? _closeMenuSubs;
 
   /// 提示信息样式
   var _isHintMsg = false;
@@ -353,6 +369,7 @@ class _ChatItemViewState extends State<ChatItemView> {
   void dispose() {
     _popupCtrl.dispose();
     _keyboardSubs.cancel();
+    _closeMenuSubs?.cancel();
     super.dispose();
   }
 
@@ -371,6 +388,12 @@ class _ChatItemViewState extends State<ChatItemView> {
 
     _popupCtrl.addListener(() {
       widget.onPopMenuShowChanged?.call(_popupCtrl.menuIsShowing);
+    });
+
+    _closeMenuSubs = widget.popPageCloseMenuSubject?.listen((value) {
+      if (value == true) {
+        _popupCtrl.hideMenu();
+      }
     });
     super.initState();
   }
@@ -429,6 +452,10 @@ class _ChatItemViewState extends State<ChatItemView> {
   Widget? _buildItemView() {
     Widget? child;
     try {
+      // 公告消息
+      if (widget.showNoticeMessage && null != _noticeView) {
+        return _noticeView;
+      }
       switch (widget.message.contentType) {
         case MessageType.text:
           {
@@ -623,18 +650,7 @@ class _ChatItemViewState extends State<ChatItemView> {
         default:
           {
             _isHintMsg = true;
-            var text;
-            if (MessageType.revoke == widget.message.contentType) {
-              text = '$_who ${UILocalizations.revokeAMsg}';
-            } else {
-              try {
-                var content = json.decode(widget.message.content!);
-                text = content['defaultTips'];
-              } catch (e) {
-                print('--------message content parse error----->e:$e');
-                text = json.encode(widget.message);
-              }
-            }
+            var text = _parseHintText();
             if (null == text) _isHintMsg = false;
             child = _buildCommonItemView(
               isBubbleBg: null == text,
@@ -705,12 +721,14 @@ class _ChatItemViewState extends State<ChatItemView> {
         isPrivateChat: widget.isPrivateChat,
         onStartDestroy: widget.onDestroyMessage,
         readingDuration: widget.readingDuration,
-        needReadCount: widget.needReadCount,
+        needReadCount: _needReadCount,
         haveReadCount: _haveReadCount,
         viewMessageReadStatus: widget.onViewMessageReadStatus,
         failedResend: widget.onFailedResend,
         customLeftAvatarBuilder: widget.customLeftAvatarBuilder,
         customRightAvatarBuilder: widget.customRightAvatarBuilder,
+        showLongPressMenu: widget.showLongPressMenu,
+        isVoiceMessage: widget.message.contentType == MessageType.voice,
       );
 
   Widget _menuBuilder() => ChatLongPressMenu(
@@ -733,12 +751,13 @@ class _ChatItemViewState extends State<ChatItemView> {
       );
 
   Widget _buildTimeView() => Container(
-        padding: EdgeInsets.symmetric(vertical: 4.h, horizontal: 2.h),
+        padding: widget.timePadding ??
+            EdgeInsets.symmetric(
+              vertical: 4.h,
+              horizontal: 2.h,
+            ),
         // height: 20.h,
-        // decoration: BoxDecoration(
-        //   borderRadius: BorderRadius.circular(4),
-        //   color: Colors.black.withOpacity(0.2),
-        // ),
+        decoration: widget.timeDecoration,
         child: Text(
           widget.timeStr!,
           style: widget.timeStyle ?? _hintTextStyle,
@@ -749,55 +768,55 @@ class _ChatItemViewState extends State<ChatItemView> {
         MenuInfo(
           icon: ImageUtil.menuCopy(),
           text: UILocalizations.copy,
-          enabled: _showCopyMenu,
+          enabled: widget.enabledCopyMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapCopyMenu,
         ),
         MenuInfo(
           icon: ImageUtil.menuDel(),
           text: UILocalizations.delete,
-          enabled: _showDelMenu,
+          enabled: widget.enabledDelMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapDelMenu,
         ),
         MenuInfo(
           icon: ImageUtil.menuForward(),
           text: UILocalizations.forward,
-          enabled: _showForwardMenu,
+          enabled: widget.enabledForwardMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapForwardMenu,
         ),
         MenuInfo(
           icon: ImageUtil.menuReply(),
           text: UILocalizations.reply,
-          enabled: _showReplyMenu,
+          enabled: widget.enabledReplyMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapReplyMenu,
         ),
         MenuInfo(
             icon: ImageUtil.menuRevoke(),
             text: UILocalizations.revoke,
-            enabled: _showRevokeMenu,
+            enabled: widget.enabledRevokeMenu,
             textStyle: menuTextStyle,
             onTap: widget.onTapRevokeMenu),
         MenuInfo(
           icon: ImageUtil.menuMultiChoice(),
           text: UILocalizations.multiChoice,
-          enabled: _showMultiChoiceMenu,
+          enabled: widget.enabledMultiMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapMultiMenu,
         ),
         MenuInfo(
           icon: ImageUtil.menuTranslation(),
           text: UILocalizations.translation,
-          enabled: _showTranslationMenu,
+          enabled: widget.enabledTranslationMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapTranslationMenu,
         ),
         MenuInfo(
           icon: ImageUtil.menuAddEmoji(),
           text: UILocalizations.add,
-          enabled: _showEmojiAddMenu,
+          enabled: widget.enabledAddEmojiMenu,
           textStyle: menuTextStyle,
           onTap: widget.onTapAddEmojiMenu,
         ),
@@ -833,36 +852,38 @@ class _ChatItemViewState extends State<ChatItemView> {
     return null;
   }
 
-  bool get _showCopyMenu =>
-      widget.enabledCopyMenu ?? widget.message.contentType == MessageType.text;
-
-  bool get _showDelMenu => widget.enabledDelMenu ?? true;
-
-  bool get _showForwardMenu =>
-      widget.enabledForwardMenu ??
-      widget.message.contentType != MessageType.voice;
-
-  bool get _showReplyMenu =>
-      widget.enabledReplyMenu ??
-      widget.message.contentType == MessageType.text ||
-          widget.message.contentType == MessageType.video ||
-          widget.message.contentType == MessageType.picture ||
-          widget.message.contentType == MessageType.location ||
-          widget.message.contentType == MessageType.quote;
-
-  bool get _showRevokeMenu =>
-      widget.enabledRevokeMenu ?? widget.message.sendID == OpenIM.iMManager.uid;
-
-  bool get _showMultiChoiceMenu => widget.enabledMultiMenu ?? true;
-
-  bool get _showTranslationMenu =>
-      widget.enabledTranslationMenu ??
-      widget.message.contentType == MessageType.text;
-
-  bool get _showEmojiAddMenu =>
-      widget.enabledAddEmojiMenu ??
-      widget.message.contentType == MessageType.picture ||
-          widget.message.contentType == MessageType.custom_face;
+  /// 公告消息
+  Widget? get _noticeView {
+    // 公告消息
+    if (widget.message.contentType! == MessageType.groupInfoSetNotification) {
+      final elem = widget.message.notificationElem!;
+      final map = json.decode(elem.detail!);
+      final notification = GroupNotification.fromJson(map);
+      if (notification.group?.notification != null &&
+          notification.group!.notification!.trim().isNotEmpty) {
+        return _buildCommonItemView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ChatAtText(
+                text: UILocalizations.groupNotice,
+                textStyle: widget.textStyle,
+                textScaleFactor: widget.textScaleFactor,
+                patterns: widget.patterns,
+              ),
+              ChatAtText(
+                text: notification.group!.notification!,
+                textStyle: widget.textStyle,
+                textScaleFactor: widget.textScaleFactor,
+                patterns: widget.patterns,
+              )
+            ],
+          ),
+        );
+      }
+    }
+    return null;
+  }
 
   String get _who =>
       _isFromMsg ? widget.message.senderNickname ?? '' : UILocalizations.you;
@@ -872,13 +893,64 @@ class _ChatItemViewState extends State<ChatItemView> {
           ?.length ??
       0;
 
+  int get _needReadCount =>
+      widget.message.attachedInfoElem?.groupHasReadInfo?.groupMemberCount ?? 0;
+
   bool get _haveUsableMenu =>
-      _showCopyMenu ||
-      _showDelMenu ||
-      _showForwardMenu ||
-      _showReplyMenu ||
-      _showRevokeMenu ||
-      _showMultiChoiceMenu ||
-      _showTranslationMenu ||
-      _showEmojiAddMenu;
+      widget.enabledCopyMenu ||
+      widget.enabledDelMenu ||
+      widget.enabledForwardMenu ||
+      widget.enabledReplyMenu ||
+      widget.enabledRevokeMenu ||
+      widget.enabledMultiMenu ||
+      widget.enabledTranslationMenu ||
+      widget.enabledAddEmojiMenu;
+
+  // bool get _isNotification => widget.message.contentType! > 1000;
+
+  String? _parseHintText() {
+    String? text;
+    if (MessageType.revoke == widget.message.contentType) {
+      text = '$_who ${UILocalizations.revokeAMsg}';
+    } else if (MessageType.advancedRevoke == widget.message.contentType) {
+      if (widget.message.isSingleChat) {
+        // 单聊
+        text = '$_who ${UILocalizations.revokeAMsg}';
+      } else {
+        // 群聊撤回包含：撤回自己消息，群组或管理员撤回其他人消息
+        var map = json.decode(widget.message.content!);
+        var info = RevokedInfo.fromJson(map);
+        if (info.revokerID == info.sourceMessageSendID) {
+          text = '$_who ${UILocalizations.revokeAMsg}';
+        } else {
+          late String revoker;
+          late String sender;
+          if (info.revokerID == OpenIM.iMManager.uid) {
+            revoker = UILocalizations.you;
+          } else {
+            revoker = info.revokerNickname!;
+          }
+          if (info.sourceMessageSendID == OpenIM.iMManager.uid) {
+            sender = UILocalizations.you;
+          } else {
+            sender = info.sourceMessageSenderNickname!;
+          }
+
+          text = sprintf(
+            UILocalizations.groupOwnerOrAdminRevokeAMsg,
+            [revoker, sender],
+          );
+        }
+      }
+    } else {
+      try {
+        var content = json.decode(widget.message.content!);
+        text = content['defaultTips'];
+      } catch (e) {
+        print('--------message content parse error----->e:$e');
+        text = json.encode(widget.message);
+      }
+    }
+    return text;
+  }
 }

@@ -1,6 +1,5 @@
-import 'package:extended_image/extended_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_openim_widget/src/chat_emoji_view.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -249,7 +248,7 @@ class ImageUtil {
     bool lowMemory = true,
     Widget? errorWidget,
   }) =>
-      _extendedImage(
+      _cachedNetworkImage(
         url: url,
         width: width,
         height: height,
@@ -287,7 +286,7 @@ class ImageUtil {
         errorWidget: errorWidget,
       );
 
-  static Widget _extendedImage({
+  /*static Widget _extendedImage({
     required String url,
     double? width,
     double? height,
@@ -307,7 +306,7 @@ class ImageUtil {
         cacheWidth: lowMemory ? cacheWidth ?? (1.sw * .75).toInt() : null,
         cacheHeight: lowMemory ? cacheHeight : null,
         cache: true,
-        clearMemoryCacheWhenDispose: clearMemoryCacheWhenDispose,
+        // clearMemoryCacheWhenDispose: clearMemoryCacheWhenDispose,
         loadStateChanged: (ExtendedImageState state) {
           switch (state.extendedImageLoadState) {
             case LoadState.loading:
@@ -340,9 +339,9 @@ class ImageUtil {
               return errorWidget ?? error(width: width, height: height);
           }
         },
-      );
+      );*/
 
-/*static Widget _cachedNetworkImage({
+  static Widget _cachedNetworkImage({
     required String url,
     double? width,
     double? height,
@@ -359,8 +358,8 @@ class ImageUtil {
         width: width,
         height: height,
         fit: fit,
-        memCacheWidth: cacheWidth ?? (lowMemory ? (1.sw * .75).toInt() : null),
-        memCacheHeight: cacheHeight,
+        memCacheWidth: _calculateCacheWidth(width),
+        // memCacheHeight: cacheHeight,
         // placeholder: placeholder,
         progressIndicatorBuilder: (context, url, progress) => Container(
           width: 10.0,
@@ -376,5 +375,9 @@ class ImageUtil {
         ),
         errorWidget: (_, url, er) =>
             errorWidget ?? error(width: width, height: height),
-      );*/
+      );
+
+  static int? _calculateCacheWidth(double? width) {
+    return (width == null ? 1.sw : (width < 1.sw ? width : 1.sw)).toInt();
+  }
 }
