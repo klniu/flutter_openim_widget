@@ -13,6 +13,11 @@ class MsgStreamEv<T> {
   final T value;
 
   MsgStreamEv({required this.msgId, required this.value});
+
+  @override
+  String toString() {
+    return 'MsgStreamEv{msgId: $msgId, value: $value}';
+  }
 }
 
 typedef CustomItemBuilder = Widget? Function(
@@ -117,7 +122,7 @@ class ChatItemView extends StatefulWidget {
   final List<MenuInfo>? menus;
 
   /// 菜单样式
-  final MenuStyle? menuStyle;
+  final PopMenuStyle? menuStyle;
 
   ///
   final EdgeInsetsGeometry? padding;
@@ -250,6 +255,8 @@ class ChatItemView extends StatefulWidget {
   /// 点击系统软键盘返回键关闭菜单
   final Subject<bool>? popPageCloseMenuSubject;
 
+  final Function(String? text)? onVisibleTrulyText;
+
   const ChatItemView({
     Key? key,
     required this.index,
@@ -324,6 +331,7 @@ class ChatItemView extends StatefulWidget {
     this.timeDecoration,
     this.timePadding,
     this.popPageCloseMenuSubject,
+    this.onVisibleTrulyText,
   }) : super(key: key);
 
   @override
@@ -447,6 +455,7 @@ class _ChatItemViewState extends State<ChatItemView> {
                 textStyle: widget.textStyle,
                 textScaleFactor: widget.textScaleFactor,
                 patterns: widget.patterns,
+                onVisibleTrulyText: widget.onVisibleTrulyText,
               ),
             );
           }
@@ -462,6 +471,7 @@ class _ChatItemViewState extends State<ChatItemView> {
                 textStyle: widget.textStyle,
                 textScaleFactor: widget.textScaleFactor,
                 patterns: widget.patterns,
+                onVisibleTrulyText: widget.onVisibleTrulyText,
               ),
             );
           }
@@ -718,7 +728,7 @@ class _ChatItemViewState extends State<ChatItemView> {
         controller: _popupCtrl,
         menus: widget.menus ?? _menusItem(),
         menuStyle: widget.menuStyle ??
-            MenuStyle(
+            PopMenuStyle(
               crossAxisCount: 4,
               mainAxisSpacing: 13.w,
               crossAxisSpacing: 12.h,
